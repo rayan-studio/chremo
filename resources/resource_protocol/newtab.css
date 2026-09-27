@@ -1,0 +1,142 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-weight: 400;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: #121619;
+  background-image: url("resource:///paysage.png");
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  overflow: hidden;
+  position: relative;
+}
+
+.search-container {
+  width: 90%;
+  max-width: 640px;
+  display: flex;
+  justify-content: center;
+  z-index: 5;
+  margin-top: -5vh;
+}
+
+.search-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 36px;
+  padding: 4px 6px 4px 18px;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.32), 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: all 0.2s ease;
+}
+
+.search-bar:focus-within {
+  background: #ffffff;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.45), 0 0 0 3px rgba(66, 133, 244, 0.35);
+}
+
+.search-icon {
+  display: flex;
+  align-items: center;
+  color: #666;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 1.08rem;
+  color: #1f1f1f;
+  height: 44px;
+  min-width: 0;
+}
+
+input::placeholder {
+  color: #757575;
+}
+
+.search-submit {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: #1a73e8;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.search-submit:hover {
+  background: #1557b0;
+  transform: scale(1.04);
+}
+
+.wallpaper-controls {
+  position: absolute;
+  bottom: 22px;
+  right: 24px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wallpaper-name {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.8rem;
+  background: rgba(0, 0, 0, 0.42);
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+}
+
+.change-bg-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(0, 0, 0, 0.48);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 6px 16px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 500;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+  transition: all 0.15s ease;
+}
+
+.change-bg-btn:hover {
+  background: rgba(0, 0, 0, 0.75);
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: scale(1.03);
+}
