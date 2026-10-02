@@ -22,14 +22,13 @@ use std::sync::Arc;
 
 use accesskit::Affine;
 use dpi::PhysicalSize;
+use egui::emath::GuiRounding;
 use egui::text::{CCursor, CCursorRange};
 use egui::text_edit::TextEditState;
 use egui::{
     Color32, CornerRadius, FontDefinitions, FontId, Id, Key, Label, LayerId, Margin, Modifiers,
     Order, PaintCallback, Panel, Stroke, StrokeKind, UiBuilder, Vec2, WidgetInfo, WidgetType, pos2,
 };
-#[cfg(target_os = "windows")]
-use winit::window::ResizeDirection;
 #[cfg(any(
     target_os = "windows",
     target_os = "linux",
@@ -96,13 +95,18 @@ pub struct Gui {
     pending_accesskit_updates: Vec<accesskit::TreeUpdate>,
 }
 
-fn truncate_with_ellipsis(input: &str, max_length: usize) -> String {
-    if input.chars().count() > max_length {
-        let truncated: String = input.chars().take(max_length.saturating_sub(1)).collect();
-        format!("{}…", truncated)
-    } else {
-        input.to_string()
-    }
+const TAB_STRIP_COLOR: Color32 = Color32::from_rgb(28, 29, 33);
+const TOOLBAR_COLOR: Color32 = Color32::from_rgb(37, 38, 43);
+const CHROME_FOREGROUND: Color32 = Color32::from_rgb(242, 243, 245);
+const TAB_STRIP_HEIGHT: f32 = 42.0;
+const CHROME_ICON_FONT: &str = "servo-chrome-icons";
+
+#[derive(Clone, Copy)]
+enum CaptionIcon {
+    Minimize,
+    Maximize,
+    Restore,
+    Close,
 }
 
 #[cfg(any(
@@ -149,9 +153,24 @@ fn load_cjk_fonts(font_candidates: &[(&str, &str)]) -> FontDefinitions {
 fn configure_fonts() -> FontDefinitions {
     // Avoid loading massive CJK font files (~34MB: msyh.ttc 20MB + malgun.ttf 14MB) into RAM for the basic egui chrome.
     // The web content itself uses DirectWrite/dwrote for complete font rendering.
-    load_cjk_fonts(&[
+    let mut fonts = load_cjk_fonts(&[
         (r"C:\Windows\Fonts\segoeui.ttf", "Segoe UI"),
-    ])
+    ]);
+    let windows_dir = std::env::var_os("WINDIR").unwrap_or_else(|| r"C:\Windows".into());
+    // Use the installed Windows 11 outlines, without bundling a proprietary font.
+    // Windows 10 can fall back to the compatible MDL2 glyph mapping.
+    for filename in ["SegoeIcons.ttf", "segmdl2.ttf"] {
+        let path = Path::new(&windows_dir).join("Fonts").join(filename);
+        if let Ok(bytes) = fs::read(path) {
+            fonts.font_data.insert(CHROME_ICON_FONT.into(), Arc::new(FontData::from_owned(bytes)));
+            fonts.families.insert(
+                FontFamily::Name(CHROME_ICON_FONT.into()),
+                vec![CHROME_ICON_FONT.into()],
+            );
+            break;
+        }
+    }
+    fonts
 }
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
@@ -246,6 +265,8 @@ impl Gui {
 
         let font_definitions = configure_fonts();
         context.egui_ctx.set_fonts(font_definitions);
+        // The browser chrome is dark even when Windows uses a light app theme.
+        context.egui_ctx.set_theme(egui::Theme::Dark);
 
         context
             .egui_winit
@@ -257,9 +278,7 @@ impl Gui {
             // shortcuts as they don't work well with servoshell's `device-pixel-ratio` CLI argument.
             options.zoom_with_keyboard = false;
 
-            // On platforms where winit fails to obtain a system theme, fall back to a light theme
-            // since it is the more common default.
-            options.fallback_theme = egui::Theme::Light;
+            options.fallback_theme = egui::Theme::Dark;
         });
 
         Self {
@@ -313,7 +332,20 @@ impl Gui {
         position.y < self.toolbar_height.get()
     }
 
-    /// Create a modern rounded navigation button with vector icon and circular hover effect.
+    /// Paint the system icon outlines at the current DPI, centered by their ink bounds.
+    /// Glyph mapping: https://learn.microsoft.com/windows/apps/design/iconography/segoe-fluent-icons-font
+    fn fluent_icon(ui: &egui::Ui, center: egui::Pos2, glyph: &str, size: f32, color: Color32) -> bool {
+        let font = FontId::new(size, egui::FontFamily::Name(CHROME_ICON_FONT.into()));
+        if !ui.fonts_mut(|fonts| fonts.families().contains(&font.family) && fonts.has_glyphs(&font, glyph)) {
+            return false;
+        }
+        let galley = ui.painter().layout_no_wrap(glyph.to_owned(), font, color);
+        let origin = (center - galley.mesh_bounds.center().to_vec2()).round_to_pixels(ui.pixels_per_point());
+        ui.painter().galley(origin, galley, color);
+        true
+    }
+
+    /// Navigation icons share a 16px system glyph grid and circular hover effect.
     fn nav_button(
         ui: &mut egui::Ui,
         icon: NavIcon,
@@ -340,6 +372,16 @@ impl Gui {
             Color32::from_gray(215)
         };
         let center = rect.center();
+
+        let glyph = match icon {
+            NavIcon::Back => "\u{e72b}",
+            NavIcon::Forward => "\u{e72a}",
+            NavIcon::Reload => "\u{e72c}",
+            NavIcon::Stop => "\u{e711}",
+        };
+        if Self::fluent_icon(ui, center, glyph, 16.0, fg) {
+            return if enabled { response.on_hover_text(tooltip) } else { response };
+        }
 
         match icon {
             NavIcon::Back => {
@@ -377,7 +419,7 @@ impl Gui {
                 let radius = 5.2;
                 let start_angle = 0.4_f32;
                 let end_angle = 4.8_f32;
-                let steps = 12;
+                let steps = 32;
                 let mut prev = egui::pos2(
                     center.x + radius * start_angle.cos(),
                     center.y + radius * start_angle.sin(),
@@ -439,6 +481,9 @@ impl Gui {
             Color32::from_gray(190)
         };
         let center = rect.center();
+        if Self::fluent_icon(ui, center, "\u{e710}", 12.0, fg) {
+            return response.on_hover_text(tooltip);
+        }
         let stroke = Stroke::new(1.3_f32, fg);
         let arm = 4.5;
         ui.painter().line_segment(
@@ -453,12 +498,84 @@ impl Gui {
         response.on_hover_text(tooltip)
     }
 
-    /// Draws a modern browser tab with fixed width (180px), favicon, title, and circular close button.
+    /// Caption controls use an explicit dark palette, independent of the OS theme.
+    fn caption_button(ui: &mut egui::Ui, icon: CaptionIcon, label: &str) -> egui::Response {
+        let (rect, response) = ui.allocate_exact_size(
+            Vec2::new(46.0, TAB_STRIP_HEIGHT),
+            egui::Sense::click(),
+        );
+        let pressed = response.is_pointer_button_down_on();
+        let background = if response.hovered() || pressed {
+            match (icon, pressed) {
+                // Keep the custom chrome consistent with the dark tab strip. The
+                // Windows-red hover fill was visually overwhelming at this scale.
+                (CaptionIcon::Close, true) => Color32::from_rgb(92, 48, 54),
+                (CaptionIcon::Close, false) => Color32::from_rgb(70, 43, 48),
+                (_, true) => Color32::from_white_alpha(36),
+                (_, false) => Color32::from_white_alpha(22),
+            }
+        } else {
+            Color32::TRANSPARENT
+        };
+        let painter = ui.painter();
+        painter.rect_filled(rect, 0.0, background);
+        let glyph = match icon {
+            CaptionIcon::Minimize => "\u{e921}",
+            CaptionIcon::Maximize => "\u{e922}",
+            CaptionIcon::Restore => "\u{e923}",
+            CaptionIcon::Close => "\u{e8bb}",
+        };
+        if Self::fluent_icon(ui, rect.center(), glyph, 10.0, CHROME_FOREGROUND) {
+            response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+            return response.on_hover_text(label);
+        }
+        // Rectangles use inside strokes, aligned to physical pixels at any DPI.
+        let origin = (rect.center() - Vec2::splat(5.0)).round_to_pixels(ui.pixels_per_point());
+        let pixel = 1.0 / ui.pixels_per_point();
+        let weight = (ui.pixels_per_point().round() * pixel).max(pixel);
+        let stroke = Stroke::new(weight, CHROME_FOREGROUND);
+        match icon {
+            CaptionIcon::Minimize => {
+                painter.rect_filled(
+                    egui::Rect::from_min_size(origin + Vec2::new(0.0, 5.0), Vec2::new(10.0, weight)),
+                    0.0,
+                    CHROME_FOREGROUND,
+                );
+            },
+            CaptionIcon::Maximize => {
+                painter.rect_stroke(
+                    egui::Rect::from_min_size(origin, Vec2::splat(10.0)),
+                    0.0, stroke, StrokeKind::Inside,
+                );
+            },
+            CaptionIcon::Restore => {
+                // Two 8px squares with the hidden edges of the rear square omitted.
+                painter.line_segment([origin + Vec2::new(2.0, 0.5), origin + Vec2::new(9.5, 0.5)], stroke);
+                painter.line_segment([origin + Vec2::new(9.5, 0.5), origin + Vec2::new(9.5, 8.0)], stroke);
+                painter.rect_stroke(
+                    egui::Rect::from_min_size(origin + Vec2::new(0.0, 2.0), Vec2::splat(8.0)),
+                    0.0, stroke, StrokeKind::Inside,
+                );
+            },
+            CaptionIcon::Close => {
+                let start = origin + Vec2::splat(weight * 0.5);
+                let end = origin + Vec2::splat(10.0 - weight * 0.5);
+                painter.line_segment([start, end], stroke);
+                painter.line_segment([pos2(start.x, end.y), pos2(end.x, start.y)], stroke);
+            },
+        }
+        response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+        response.on_hover_text(label)
+    }
+
+    /// Draw a tab with a width-aware title and a stable close-button gutter.
     fn browser_tab(
         ui: &mut egui::Ui,
         window: &ServoShellWindow,
         webview: WebView,
         favicon_texture: Option<egui::load::SizedTexture>,
+        width: f32,
+        reveal_active: bool,
     ) {
         let label = match (webview.page_title(), webview.url()) {
             (Some(title), _) if !title.is_empty() => title,
@@ -468,15 +585,18 @@ impl Gui {
 
         let active = window.active_webview().map(|webview| webview.id()) == Some(webview.id());
 
-        let tab_size = Vec2::new(180.0, 34.0);
-        let (tab_rect, response) = ui.allocate_exact_size(tab_size, egui::Sense::click());
+        let tab_size = Vec2::new(width, TAB_STRIP_HEIGHT);
+        let (slot_rect, response) = ui.allocate_exact_size(tab_size, egui::Sense::click());
+        let tab_rect = slot_rect.shrink2(Vec2::new(0.0, 5.0));
+        if active && reveal_active {
+            ui.scroll_to_rect(slot_rect, Some(egui::Align::Center));
+        }
 
         let is_hovered = response.hovered();
-        let active_bg = Color32::from_rgb(46, 47, 52);
-        let inactive_hover_bg = Color32::from_rgba_unmultiplied(255, 255, 255, 18);
+        let active_bg = Color32::from_rgb(62, 63, 70);
+        let inactive_hover_bg = Color32::from_rgb(43, 44, 50);
 
-        // Tab background: rounded top corners (8px)
-        let corner_radius = CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 };
+        let corner_radius = CornerRadius::same(8);
         if active {
             ui.painter().rect_filled(tab_rect, corner_radius, active_bg);
         } else if is_hovered {
@@ -504,7 +624,7 @@ impl Gui {
                 egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                 Color32::WHITE,
             );
-        } else {
+        } else if !Self::fluent_icon(ui, favicon_rect.center(), "\u{e774}", 14.0, Color32::from_gray(170)) {
             let center = favicon_rect.center();
             let stroke = Stroke::new(1.1_f32, Color32::from_gray(155));
             let r = 5.5_f32;
@@ -537,7 +657,7 @@ impl Gui {
         }
 
         // 2. Circular Close Button (only shown when active or hovered to keep inactive tabs uncluttered)
-        let show_close = active || is_hovered;
+        let show_close = width >= 140.0 || active || is_hovered;
         let mut close_clicked = false;
         if show_close {
             let close_rect = egui::Rect::from_center_size(
@@ -589,15 +709,15 @@ impl Gui {
         } else {
             Color32::from_rgb(175, 175, 185)
         };
-        let tab_title = truncate_with_ellipsis(&label, if show_close { 18 } else { 22 });
-        let title_pos = egui::pos2(tab_rect.left() + 32.0, tab_rect.center().y);
-        ui.painter().text(
-            title_pos,
-            egui::Align2::LEFT_CENTER,
-            tab_title,
-            FontId::proportional(12.5),
-            text_color,
+        let mut title_job = egui::text::LayoutJob::simple_singleline(
+            label.clone(), FontId::proportional(12.0), text_color,
         );
+        title_job.wrap.max_width = (tab_rect.width() - 68.0).max(0.0);
+        title_job.wrap.max_rows = 1;
+        title_job.wrap.break_anywhere = true;
+        let galley = ui.fonts_mut(|fonts| fonts.layout_job(title_job));
+        let title_pos = pos2(tab_rect.left() + 34.0, tab_rect.center().y - galley.size().y * 0.5);
+        ui.painter().galley(title_pos, galley, text_color);
 
         // Tooltip on tab hover
         response.clone().on_hover_ui(|ui| {
@@ -637,39 +757,11 @@ impl Gui {
 
             let show_window_controls = !winit_window.is_decorated();
 
-            // Support resizing from the top window edge / corners on Windows when the titlebar is custom
-            #[cfg(target_os = "windows")]
-            if show_window_controls && !winit_window.is_maximized() {
-                if let Some(pos) = ctx.pointer_latest_pos() {
-                    let screen_rect = ctx.content_rect();
-                    let top_border = 4.0;
-                    let corner_size = 12.0;
-                    if pos.y <= top_border && pos.y >= 0.0 {
-                        if pos.x <= corner_size {
-                            ctx.set_cursor_icon(egui::CursorIcon::ResizeNorthWest);
-                            if ctx.input(|i| i.pointer.primary_down()) {
-                                let _ = winit_window.drag_resize_window(ResizeDirection::NorthWest);
-                            }
-                        } else if pos.x >= screen_rect.max.x - corner_size {
-                            ctx.set_cursor_icon(egui::CursorIcon::ResizeNorthEast);
-                            if ctx.input(|i| i.pointer.primary_down()) {
-                                let _ = winit_window.drag_resize_window(ResizeDirection::NorthEast);
-                            }
-                        } else {
-                            ctx.set_cursor_icon(egui::CursorIcon::ResizeNorth);
-                            if ctx.input(|i| i.pointer.primary_down()) {
-                                let _ = winit_window.drag_resize_window(ResizeDirection::North);
-                            }
-                        }
-                    }
-                }
-            }
-
             // Show toolbar unless fullscreen is from document (web API)
             if !headed_window.is_fullscreen_from_document() {
                 // 1. A modern Tab header strip / Title bar at the very top of the window (like Brave/Chrome)
                 let tabs_frame = egui::Frame::default()
-                    .fill(Color32::from_rgb(24, 25, 28))
+                    .fill(TAB_STRIP_COLOR)
                     .inner_margin(egui::Margin {
                         left: 8,
                         right: 0,
@@ -678,6 +770,7 @@ impl Gui {
                     });
 
                 Panel::top("tabs")
+                    .exact_size(TAB_STRIP_HEIGHT)
                     .show_separator_line(false)
                     .frame(tabs_frame)
                     .show_inside(ctx, |ui| {
@@ -685,122 +778,21 @@ impl Gui {
                         ui.available_size(),
                         egui::Layout::right_to_left(egui::Align::Center),
                         |ui| {
-                            // On platforms with custom titlebar, render the native-styled caption buttons on the far right
+                            ui.spacing_mut().item_spacing = Vec2::ZERO;
                             if show_window_controls {
-                                ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
-
-                                // Close button
-                                let btn_size = egui::vec2(46.0, 34.0);
-                                let (close_rect, close_resp) =
-                                    ui.allocate_exact_size(btn_size, egui::Sense::click());
-                                let close_hovered = close_resp.hovered();
-                                let close_active = close_resp.is_pointer_button_down_on();
-                                let close_bg = if close_active {
-                                    egui::Color32::from_rgb(241, 112, 122)
-                                } else if close_hovered {
-                                    egui::Color32::from_rgb(232, 17, 35)
-                                } else {
-                                    egui::Color32::TRANSPARENT
-                                };
-                                let close_fg = if close_hovered {
-                                    egui::Color32::WHITE
-                                } else {
-                                    ui.visuals().text_color()
-                                };
-                                ui.painter().rect_filled(close_rect, 0.0, close_bg);
-                                let center = close_rect.center();
-                                let arm = 5.0;
-                                let stroke = egui::Stroke::new(1.0_f32, close_fg);
-                                ui.painter().line_segment(
-                                    [center + egui::vec2(-arm, -arm), center + egui::vec2(arm, arm)],
-                                    stroke,
-                                );
-                                ui.painter().line_segment(
-                                    [center + egui::vec2(-arm, arm), center + egui::vec2(arm, -arm)],
-                                    stroke,
-                                );
-                                if close_resp.clicked() {
+                                if Self::caption_button(ui, CaptionIcon::Close, "Close window").clicked() {
                                     window.schedule_close();
                                 }
-
-                                // Maximize / Restore button
                                 let is_max = winit_window.is_maximized();
-                                let (max_rect, max_resp) =
-                                    ui.allocate_exact_size(btn_size, egui::Sense::click());
-                                let max_hovered = max_resp.hovered();
-                                let max_active = max_resp.is_pointer_button_down_on();
-                                let max_bg = if max_active {
-                                    ui.visuals().widgets.active.weak_bg_fill
-                                } else if max_hovered {
-                                    ui.visuals().widgets.hovered.weak_bg_fill
+                                let (icon, label) = if is_max {
+                                    (CaptionIcon::Restore, "Restore window")
                                 } else {
-                                    egui::Color32::TRANSPARENT
+                                    (CaptionIcon::Maximize, "Maximize window")
                                 };
-                                let max_fg = ui.visuals().text_color();
-                                ui.painter().rect_filled(max_rect, 0.0, max_bg);
-                                let center = max_rect.center();
-                                if is_max {
-                                    // Exact Chrome/Windows 11 Restore icon: overlapping 8x8 rectangles
-                                    let stroke = egui::Stroke::new(1.0_f32, max_fg);
-                                    let front_rect = egui::Rect::from_min_max(
-                                        center + egui::vec2(-4.0, -1.0),
-                                        center + egui::vec2(4.0, 7.0),
-                                    );
-                                    ui.painter().rect_stroke(front_rect, 0.0, stroke, StrokeKind::Inside);
-                                    ui.painter().line_segment(
-                                        [center + egui::vec2(-2.0, -3.0), center + egui::vec2(6.0, -3.0)],
-                                        stroke,
-                                    );
-                                    ui.painter().line_segment(
-                                        [center + egui::vec2(6.0, -3.0), center + egui::vec2(6.0, 5.0)],
-                                        stroke,
-                                    );
-                                    ui.painter().line_segment(
-                                        [center + egui::vec2(-2.0, -3.0), center + egui::vec2(-2.0, -1.0)],
-                                        stroke,
-                                    );
-                                    ui.painter().line_segment(
-                                        [center + egui::vec2(4.0, 5.0), center + egui::vec2(6.0, 5.0)],
-                                        stroke,
-                                    );
-                                } else {
-                                    // Exact Chrome/Windows 11 Maximize icon: 10x10 square
-                                    let square_rect = egui::Rect::from_center_size(
-                                        center,
-                                        egui::vec2(10.0, 10.0),
-                                    );
-                                    ui.painter().rect_stroke(
-                                        square_rect,
-                                        0.0,
-                                        egui::Stroke::new(1.0_f32, max_fg),
-                                        StrokeKind::Inside,
-                                    );
-                                }
-                                if max_resp.clicked() {
+                                if Self::caption_button(ui, icon, label).clicked() {
                                     winit_window.set_maximized(!is_max);
                                 }
-
-                                // Minimize button
-                                let (min_rect, min_resp) =
-                                    ui.allocate_exact_size(btn_size, egui::Sense::click());
-                                let min_hovered = min_resp.hovered();
-                                let min_active = min_resp.is_pointer_button_down_on();
-                                let min_bg = if min_active {
-                                    ui.visuals().widgets.active.weak_bg_fill
-                                } else if min_hovered {
-                                    ui.visuals().widgets.hovered.weak_bg_fill
-                                } else {
-                                    egui::Color32::TRANSPARENT
-                                };
-                                let min_fg = ui.visuals().text_color();
-                                ui.painter().rect_filled(min_rect, 0.0, min_bg);
-                                let min_stroke = egui::Stroke::new(1.0_f32, min_fg);
-                                let center = min_rect.center();
-                                ui.painter().line_segment(
-                                    [center + egui::vec2(-5.0, 0.0), center + egui::vec2(5.0, 0.0)],
-                                    min_stroke,
-                                );
-                                if min_resp.clicked() {
+                                if Self::caption_button(ui, CaptionIcon::Minimize, "Minimize window").clicked() {
                                     winit_window.set_minimized(true);
                                 }
                             }
@@ -808,17 +800,43 @@ impl Gui {
                             // Remaining space (tabs, +, and draggable titlebar area)
                             ui.allocate_ui_with_layout(
                                 ui.available_size(),
-                                egui::Layout::left_to_right(egui::Align::Max),
+                                egui::Layout::left_to_right(egui::Align::Center),
                                 |ui| {
                                     ui.spacing_mut().item_spacing = egui::vec2(4.0, 0.0);
 
-                                    for (id, webview) in window.webviews().into_iter() {
-                                        let favicon = favicon_textures
-                                            .get(&id)
-                                            .map(|(_, favicon)| favicon)
-                                            .copied();
-                                        Self::browser_tab(ui, window, webview, favicon);
-                                    }
+                                    let webviews = window.webviews();
+                                    let count = webviews.len().max(1) as f32;
+                                    // Reserve the new-tab button and a small draggable area even
+                                    // when tabs overflow. Caption controls never scroll away.
+                                    let available = (ui.available_width() - 76.0).max(0.0);
+                                    let tab_width = ((available - (count - 1.0) * 4.0) / count).clamp(88.0, 240.0);
+                                    let tabs_width = (count * (tab_width + 4.0) - 4.0).min(available);
+                                    let active_id = window.active_webview().map(|view| view.id());
+                                    let selection_key = ui.id().with("visible_tab");
+                                    let reveal_active = ui.data_mut(|data| {
+                                        let changed = data.get_temp::<Option<WebViewId>>(selection_key) != Some(active_id);
+                                        data.insert_temp(selection_key, active_id);
+                                        changed
+                                    });
+                                    egui::ScrollArea::horizontal()
+                                        .id_salt("browser_tabs")
+                                        .max_width(tabs_width)
+                                        .max_height(TAB_STRIP_HEIGHT)
+                                        .auto_shrink([true, false])
+                                        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+                                        .show(ui, |ui| {
+                                            ui.allocate_ui_with_layout(
+                                                Vec2::new(count * (tab_width + 4.0) - 4.0, TAB_STRIP_HEIGHT),
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| {
+                                                for (id, webview) in webviews {
+                                                    let favicon = favicon_textures.get(&id).map(|(_, favicon)| *favicon);
+                                                    ui.push_id(id, |ui| {
+                                                        Self::browser_tab(ui, window, webview, favicon, tab_width, reveal_active);
+                                                    });
+                                                }
+                                            });
+                                        });
 
                                     let new_tab_button = Self::tab_strip_button(ui, "New tab");
                                     new_tab_button.widget_info(|| {
@@ -854,7 +872,7 @@ impl Gui {
 
                 // 2. The Navigation / Address Bar (below the tabs)
                 let frame = egui::Frame::default()
-                    .fill(Color32::from_rgb(46, 47, 52))
+                    .fill(TOOLBAR_COLOR)
                     .inner_margin(Margin {
                         left: 10,
                         right: 10,
@@ -947,8 +965,9 @@ impl Gui {
                                 Color32::from_rgb(32, 33, 37)
                             };
 
-                            // Draw rounded pill background (fixed 15px radius)
-                            let corner_radius = 15.0;
+                            // A restrained radius keeps the address field aligned with the
+                            // square-edged browser chrome instead of looking like a pill.
+                            let corner_radius = 7.0;
                             ui.painter().rect_filled(omnibox_rect, corner_radius, omnibox_bg);
 
                             // Draw border stroke strictly INSIDE the fixed rect, so it NEVER expands the widget bounds
@@ -978,6 +997,8 @@ impl Gui {
                             };
                             let stroke = Stroke::new(1.3_f32, icon_color);
 
+                            let glyph = if is_secure { "\u{e72e}" } else if is_http { "\u{e774}" } else { "\u{e721}" };
+                            if !Self::fluent_icon(ui, ic, glyph, 14.0, icon_color) {
                             if is_secure {
                                 let body = egui::Rect::from_center_size(
                                     ic + Vec2::new(0.0, 2.0),
@@ -1069,6 +1090,7 @@ impl Gui {
                                     Stroke::new(1.4_f32, icon_color),
                                 );
                             }
+                            }
 
                             // Stylize the text cursor (slim, modern blue caret) and selection
                             let visuals = ui.visuals_mut();
@@ -1135,13 +1157,16 @@ impl Gui {
                             } else {
                                 Color32::from_gray(190)
                             };
-                            ui.painter().text(
-                                prefs_rect.center(),
-                                egui::Align2::CENTER_CENTER,
-                                "☢",
-                                FontId::proportional(14.0),
-                                prefs_fg,
-                            );
+                            if !Self::fluent_icon(ui, prefs_rect.center(), "\u{f196}", 16.0, prefs_fg) {
+                                // A flask also identifies the experimental toggle without a system font.
+                                let center = prefs_rect.center();
+                                let points = [(-2.0, -6.0), (-2.0, -1.0), (-6.0, 6.0),
+                                              (6.0, 6.0), (2.0, -1.0), (2.0, -6.0)];
+                                ui.painter().add(egui::Shape::closed_line(
+                                    points.into_iter().map(|(x, y)| center + Vec2::new(x, y)).collect(),
+                                    Stroke::new(1.3_f32, prefs_fg),
+                                ));
+                            }
                             let prefs_resp = prefs_resp
                                 .on_hover_text("Enable experimental preferences");
                             prefs_resp.widget_info(|| {

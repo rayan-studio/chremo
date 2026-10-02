@@ -425,6 +425,13 @@ opt-level = 2
 incremental = true
 debug = "line-tables-only"
 
+# Local edit/build iterations, with smaller debug information than `dev`.
+# Inherits the Windows servo-script codegen-units workaround above.
+[profile.fast]
+inherits = "dev"
+debug = "line-tables-only"
+incremental = true
+
 [profile.production]
 inherits = "release"
 debug-assertions = false

@@ -486,7 +486,12 @@ impl Preferences {
             dom_touch_events_legacy_apis_enabled: cfg!(target_os = "android") |
                 cfg!(target_env = "ohos"),
             dom_transient_activation_duration_ms: 5000,
-            dom_web_animations_enabled: true,
+            // Element.animate currently returns an Animation without playback controls
+            // or ready/finished promises, and does not start the effect. Exposing it
+            // makes feature detection select a broken path on sites such as Google.
+            // Keep the API opt-in until its playback lifecycle is implemented. CSS
+            // animations and transitions are independent of this preference.
+            dom_web_animations_enabled: false,
             dom_webgl2_enabled: false,
             dom_webgpu_enabled: false,
             dom_webgpu_wgpu_backend: String::new(),

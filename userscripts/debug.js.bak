@@ -1,0 +1,22 @@
+﻿setInterval(() => {
+    try {
+        const html = document.documentElement;
+        console.error('DEBUG_HTML_ATTRS: dark=' + html.getAttribute('dark') + ', class=' + html.className + ', theme=' + html.getAttribute('theme'));
+        const guideIcon = document.querySelector('ytd-guide-entry-renderer yt-icon') || document.querySelector('yt-icon');
+        if (guideIcon) {
+            const cs = window.getComputedStyle(guideIcon);
+            console.error('DEBUG_YT_ICON: color=' + cs.color + ', fill=' + cs.fill + ', display=' + cs.display + ', w=' + cs.width + ', h=' + cs.height);
+            const svg = guideIcon.querySelector('svg');
+            if (svg) {
+                const scs = window.getComputedStyle(svg);
+                console.error('DEBUG_SVG: color=' + scs.color + ', fill=' + scs.fill + ', w=' + scs.width + ', h=' + scs.height);
+            } else {
+                console.error('DEBUG_NO_SVG in yt-icon, innerHTML=' + guideIcon.innerHTML.slice(0, 100));
+            }
+        } else {
+            console.error('DEBUG_NO_YT_ICON found yet');
+        }
+    } catch(e) {
+        console.error('DEBUG_ERR: ' + e);
+    }
+}, 2000);

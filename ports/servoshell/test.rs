@@ -159,7 +159,7 @@ fn test_cmdline_and_location_bar_url() {
         "dragonfruit",
         "https://duckduckgo.com/html/?q=dragonfruit",
         "file:///fake/cwd/dragonfruit",
-        "https://duckduckgo.com/html/?q=dragonfruit",
+        "https://www.google.com/search?q=dragonfruit",
     );
     test_url(
         "localhost:8000",
@@ -224,7 +224,7 @@ fn test_cmdline_and_location_bar_url() {
         "dragonfruit",
         "https://duckduckgo.com/html/?q=dragonfruit",
         "file:///C:/fake/cwd/dragonfruit",
-        "https://duckduckgo.com/html/?q=dragonfruit",
+        "https://www.google.com/search?q=dragonfruit",
     );
     test_url(
         "localhost:8000",

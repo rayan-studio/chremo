@@ -152,6 +152,8 @@ impl HeadedWindow {
         if no_native_titlebar {
             winit_window.set_undecorated_shadow(true);
             winit_window.set_corner_preference(CornerPreference::Round);
+            super::windows_frame::install(&winit_window)
+                .expect("Could not enable native resizing for the custom window frame");
         }
 
         #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -430,7 +432,7 @@ impl HeadedWindow {
             })
             .shortcut(CMD_OR_CONTROL, 'T', || {
                 let url = Url::parse("servo:newtab")
-                    .expect("Should be able to unconditionally parse 'servo:newtab' as URL");
+                    .expect("servo:newtab is always a valid URL");
                 window.create_and_activate_toplevel_webview(
                     state.clone(),
                     TopLevelWebViewCreationRequest::WithUrl(url),
@@ -682,8 +684,7 @@ impl HeadedWindow {
                         },
                     };
 
-                    // Create wheel event before snapping to the major axis of movement
-                    let delta = WheelDelta {
+                    let wheel = WheelDelta {
                         x: delta_x,
                         y: delta_y,
                         z: 0.0,
@@ -691,7 +692,7 @@ impl HeadedWindow {
                     };
                     let point = self.webview_relative_mouse_point.get();
                     webview.notify_input_event(InputEvent::Wheel(WheelEvent::new(
-                        delta,
+                        wheel,
                         point.into(),
                     )));
                 },

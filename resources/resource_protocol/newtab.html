@@ -1,84 +1,21 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nouvel onglet</title>
     <link rel="stylesheet" href="resource:///newtab.css" />
   </head>
-  <body id="bg">
-    <div class="search-container">
-      <form action="https://www.google.com/search" method="GET" class="search-bar">
-        <div class="search-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-        </div>
-        <input name="q" placeholder="Rechercher sur le Web ou entrer une adresse…" autofocus autocomplete="off" />
-        <button type="submit" class="search-submit" title="Rechercher">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-            <polyline points="12 5 19 12 12 19"></polyline>
-          </svg>
-        </button>
+  <body>
+    <div class="backdrop"></div>
+    <main class="card">
+      <a href="https://servo.org" class="logo-link" title="Servo">
+        <img class="logo" src="resource:///servo-color-negative-no-container.svg" draggable="false" alt="Servo"/>
+      </a>
+      <form action="https://duckduckgo.com/html/" class="search-form">
+        <input name="q" placeholder="Rechercher sur le Web…" autofocus />
+        <button type="submit">Rechercher</button>
       </form>
-    </div>
-
-    <footer class="wallpaper-controls">
-      <span id="wallpaper-name" class="wallpaper-name">Lever de soleil alpin</span>
-      <button id="change-bg-btn" class="change-bg-btn" title="Changer de fond d'écran">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-        </svg>
-        <span>Changer de fond</span>
-      </button>
-    </footer>
-
-    <script>
-      (function() {
-        const wallpapers = [
-          { url: "resource:///paysage.png", name: "Lever de soleil alpin" },
-          { url: "resource:///landscape_alps.jpg", name: "Montagnes et prairie fleurie" },
-          { url: "resource:///landscape_aurora.jpg", name: "Aurore boréale sur les fjords" },
-          { url: "resource:///landscape_sunset_beach.jpg", name: "Plage tropicale au coucher de soleil" },
-          { url: "resource:///landscape_peyto.jpg", name: "Lac Peyto, Rocheuses canadiennes" }
-        ];
-
-        let currentIndex = 0;
-        try {
-          const saved = localStorage.getItem("servo_wallpaper_index");
-          if (saved !== null) {
-            currentIndex = (parseInt(saved, 10) + 1) % wallpapers.length;
-          } else {
-            currentIndex = Math.floor(Math.random() * wallpapers.length);
-          }
-        } catch (e) {
-          currentIndex = Math.floor(Math.random() * wallpapers.length);
-        }
-
-        const bgElem = document.getElementById("bg");
-        const nameElem = document.getElementById("wallpaper-name");
-        const changeBtn = document.getElementById("change-bg-btn");
-
-        function applyWallpaper(index) {
-          const wp = wallpapers[index];
-          bgElem.style.backgroundImage = 'url("' + wp.url + '")';
-          if (nameElem) nameElem.textContent = wp.name;
-          try {
-            localStorage.setItem("servo_wallpaper_index", index.toString());
-          } catch (e) {}
-        }
-
-        applyWallpaper(currentIndex);
-
-        if (changeBtn) {
-          changeBtn.addEventListener("click", function() {
-            currentIndex = (currentIndex + 1) % wallpapers.length;
-            applyWallpaper(currentIndex);
-          });
-        }
-      })();
-    </script>
+    </main>
   </body>
 </html>

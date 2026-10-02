@@ -18,5 +18,7 @@ mod headless_window;
 mod keyutils;
 mod protocols;
 mod tracing;
+#[cfg(target_os = "windows")]
+mod windows_frame;
 #[cfg(feature = "webxr")]
 mod webxr;

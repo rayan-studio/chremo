@@ -16,6 +16,9 @@ Coordination of Servo development happens:
 
 ## Getting started
 
+For this customized Windows fork, use `./caddy build` for the direct local build
+workflow. See [Build local (français)](docs/local-build.md) for commands and scope.
+
 For more detailed build instructions, see the Servo Book under [Getting the Code] and [Building Servo].
 
 [Getting the Code]: https://book.servo.org/building/getting-the-code.html
